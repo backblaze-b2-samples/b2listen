@@ -1,0 +1,11 @@
+.idea
+.git/
+.gitignore
+.pytest_cache/
+__pycache__/
+
+.venv
+*.iml
+
+.dockerignore
+.env*
