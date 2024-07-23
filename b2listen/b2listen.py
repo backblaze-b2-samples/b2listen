@@ -350,12 +350,18 @@ def listen(args: argparse.Namespace):
             nonlocal old_url
             modify_rule(b2bucket, old_url, args.rule_name)
     else:
+        created_rule: bool = False
+
         # No - create a temporary rule using the label as its name
         def url_handler(url):
+            nonlocal created_rule
             create_rule(b2bucket, url, label, args)
+            created_rule = True
 
         def exit_handler():
-            delete_rule(b2bucket, label)
+            nonlocal created_rule
+            if created_rule:
+                delete_rule(b2bucket, label)
 
     run_cloudflared(args.cloudflared_command, args.cloudflared_loglevel, service_url, label, url_handler, exit_handler)
 
