@@ -78,7 +78,7 @@ To create a new, temporary, event notification rule and proxy event notification
 > Note: `host.docker.internal` is a special hostname that resolves to the Docker host. If you use a hostname such as `localhost` or `127.0.0.1` when B2listen is running in Docker, it will resolve to the Docker container's own network interface.
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen metadaddy-tester --url http://host.docker.internal:8080
+% docker run --env-file .env superpat7/b2listen listen my-bucket --url http://host.docker.internal:8080
 INFO:b2listen:Tunnel URL: https://alfred-dakota-vbulletin-comfort.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-22-18-03-448423--"
 INFO:b2listen:Registered tunnel connection connIndex=0 connection=b7ebd606-8da5-4273-af3d-472ec741887c event=0 ip=198.41.200.13 location=sjc08 protocol=quic
@@ -101,7 +101,7 @@ When you upload a file to (or delete, or hide a file in) your Backblaze B2 Bucke
 You can run B2listen's embedded HTTP server by passing the `--run-server` argument to the `listen` command. B2listen starts a simple HTTP server on an available port and uses its interface and port to build the local service URL:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen --run-server metadaddy-tester
+% docker run --env-file .env superpat7/b2listen listen --run-server my-bucket
 INFO:b2listen.server:Starting HTTP server on 127.0.0.1:50427
 INFO:b2listen:Tunnel URL: https://workforce-help-experiences-peak.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-22-07-32-503587--"
@@ -141,7 +141,7 @@ Body:
     {
       "accountId": "15f935cf4dcb",
       "bucketId": "21a5bf29a395fc7f84dd0c1b",
-      "bucketName": "metadaddy-tester",
+      "bucketName": "my-bucket",
       "eventId": "19f154fa574c68f60ea362f8e2a4272a63aefc094889d8985740c93d2710dcbe",
       "eventTimestamp": 1721711606884,
       "eventType": "b2:ObjectCreated:Upload",
@@ -171,9 +171,9 @@ By default, on startup, B2listen creates a new, temporary, rule with the followi
 You can use the [B2 Command-Line Tool](https://www.backblaze.com/docs/cloud-storage-command-line-tools) to inspect the temporary rule while B2listen is running:
 
 ```console
-% b2 bucket notification-rule list b2://metadaddy-tester          
+% b2 bucket notification-rule list b2://my-bucket          
 FeaturePreviewWarning: Event Notifications feature is in "Private Preview" state and may change without notice. See https://www.backblaze.com/blog/announcing-event-notifications/ for details.
-Notification rules for b2://metadaddy-tester/ :
+Notification rules for b2://my-bucket/ :
 - name: --autocreated-b2listen-2024-07-22-22-41-03-388021--
   eventTypes: 
     - b2:HideMarkerCreated:*
@@ -195,7 +195,7 @@ Notification rules for b2://metadaddy-tester/ :
 You can customize the temporary event notification rule's configuration via B2listen's command-line arguments. For example, to configure a temporary rule to match all 'object created' events with an object name prefix of `images/raw`, set the custom header `X-Source: B2` on event notification messages and sign messages with the signing secret `01234567890123456789012345678901`, you would use the following command-line:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen metadaddy-tester --url host.docker.internal:8000 \
+% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
     --event-types 'b2:ObjectCreated:*' --prefix 'images/raw' --custom-header 'X-Source: B2' \
     --signing-secret 01234567890123456789012345678901
 INFO:root:Tunnel URL: https://realize-pj-reasons-pasta.trycloudflare.com
@@ -207,7 +207,7 @@ Note that the temporary rule's configuration cannot overlap with an existing rul
 If you ran the above command in the presence of an existing rule with event type `b2:ObjectCreated:*` and prefix `images`, you would receive an error message:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen metadaddy-tester --url host.docker.internal:8000 \
+% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
     --event-types 'b2:ObjectCreated:*' --prefix 'images/raw' --custom-header 'X-Source: B2' \
     --signing-secret 01234567890123456789012345678901
 INFO:b2listen:Tunnel URL: https://knight-boxing-discipline-commitment.trycloudflare.com
@@ -230,7 +230,7 @@ INFO:b2listen:Deleting rule with name "--autocreated-b2listen-2024-07-23-05-59-1
 As an alternative to creating a temporary event notification rule, you can specify the name of an existing rule. On startup, B2listen will replace the URL in the existing rule with the `trycloudflare.com` URL.
 
 ```console
-% docker run --env-file superpat7/b2listen listen metadaddy-tester --url host.docker.internal:8000 \
+% docker run --env-file superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
     --rule-name new-image-created
 INFO:root:Tunnel URL: https://larger-interracial-william-validity.trycloudflare.com
 INFO:b2listen:Modified rule with name "new-image-created"
@@ -251,7 +251,7 @@ INFO:b2listen:Old URL was https://newton-motivated-fresh-op.trycloudflare.com; n
 In some circumstances, B2listen may not delete the temporary rule when exiting. If this happens, the next time you run B2listen, you will see an error message:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen metadaddy-tester --url host.docker.internal:8000
+% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000
 INFO:b2listen:Tunnel URL: https://pulse-equity-lyric-premiere.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-16-10-39-480080--"
 CRITICAL:b2listen:Error creating event notification rule - an overlapping rule already exists.
@@ -271,7 +271,7 @@ In these circumstances, you can run B2listen with the `cleanup` command to delet
 In Docker:
 
 ```console
-% docker run --env-file .env superpat7/b2listen cleanup metadaddy-tester      
+% docker run --env-file .env superpat7/b2listen cleanup my-bucket      
 INFO:root:Deleting rule "--autocreated-b2listen-2024-07-22-16-09-39-909265--"
 INFO:root:Could not find any processes with --autocreated-b2listen- in the command line
 ```
@@ -279,7 +279,7 @@ INFO:root:Could not find any processes with --autocreated-b2listen- in the comma
 Outside Docker (see below):
 
 ```console
-% python -m b2listen cleanup metadaddy-tester
+% python -m b2listen cleanup my-bucket
 INFO:root:Deleting rule "--autocreated-b2listen-2024-07-22-16-09-39-909265--"
 INFO:b2listen:Killing process 3313 with command line "cloudflared --no-autoupdate tunnel --url http://localhost:8080 --loglevel info --label --autocreated-b2listen-2024-07-22-16-09-39-909265--"
 ```
@@ -295,7 +295,7 @@ b2listen version 1.0.0
 
 ## Running B2listen Outside Docker
 
-You can also run the Python app directly from the command-line if you wish. You will need Python 3.10 or higher.
+You can also run the Python app directly from the command-line if you wish. You will need Python 3.10 or higher, and you must [install `cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your machine.
 
 First, clone this repository to your machine:
 
@@ -336,24 +336,29 @@ Create a `.env` file as described in the [Configuration](#configuration) section
 You can now run any of the above commands using `python -m b2listen` instead of `docker run --env-file .env superpat7/b2listen`. For example:
 
 ```console
-% python -m b2listen listen metadaddy-tester
+% python -m b2listen listen my-bucket --url http://localhost:8080
 INFO:b2listen:Tunnel URL: https://cnn-studies-assistance-cdna.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-16-07-16-083231--"
 INFO:b2listen:Registered tunnel connection connIndex=0 connection=810f4914-12ec-4a08-a4fd-764478ca1e4a event=0 ip=198.41.192.77 location=sjc01 protocol=quic
 INFO:b2listen:Ready to deliver events to http://localhost:8080
 ```
 
-As mentioned above, when running outside Docker, the default event service URL is `http://localhost:8080`.
+If `cloudflared` is not on the path, you can specify its location with the `--cloudflared-command` argument:
+
+```console
+% python -m b2listen --cloudflared-command /path/to/my/cloudflared listen my-bucket --url http://localhost:8080
+...
+```
 
 ## Troubleshooting
 
 You can use the `--loglevel` argument to set B2listen's logging level to one of `debug`, `info`, `warn`, `error`, or `critical`. Setting the logging level to `debug` shows much more detail, including the JSON representation of the temporary rule and all of the output from `cloudflared`:
 
 ```console
-% docker run --env-file .env superpat7/b2listen --loglevel debug listen metadaddy-tester --url host.docker.internal:8080
+% docker run --env-file .env superpat7/b2listen --loglevel debug listen my-bucket --url host.docker.internal:8080
 DEBUG:b2listen:Application Key ID = 00415f935cf4dcb0000000473
 DEBUG:b2listen:Application Key = K004***************************
-DEBUG:b2listen:Authorized for access to metadaddy-tester
+DEBUG:b2listen:Authorized for access to my-bucket
 DEBUG:b2listen:2024-07-22T23:28:50Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
 DEBUG:b2listen:2024-07-22T23:28:50Z INF Requesting new quick Tunnel on trycloudflare.com...
 DEBUG:b2listen:2024-07-22T23:28:51Z INF +--------------------------------------------------------------------------------------------+
