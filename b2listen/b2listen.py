@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Callable, Dict
 
 import psutil
-from b2sdk.v2 import AuthInfoCache, B2Api, Bucket, InMemoryAccountInfo, NotificationRule
+from b2sdk.v2 import AuthInfoCache, B2Api, B2HttpApiConfig, Bucket, InMemoryAccountInfo, NotificationRule
 from b2sdk.v2.exception import BadRequest, NonExistentBucket
 from dotenv import load_dotenv
 
@@ -27,7 +27,7 @@ EVENT_NOTIFICATION_RULE_PREFIX = '--autocreated-b2listen-'
 NAME = 'b2listen'
 
 
-def version(_args: argparse.Namespace):
+def version(_args: argparse.Namespace | None = None):
     v = metadata.version(NAME)
     print(f'{NAME} version {v}')
 
@@ -258,7 +258,8 @@ def authorize_b2() -> B2Api:
     logger.debug(f'Application Key = {application_key[:4] + ("*" * 27)}')
 
     info = InMemoryAccountInfo()
-    b2_api = B2Api(info, cache=AuthInfoCache(info))
+    api_config = B2HttpApiConfig(user_agent_append=f'{NAME}/{version()}')
+    b2_api = B2Api(info, cache=AuthInfoCache(info), api_config=api_config)
     b2_api.authorize_account("production", application_key_id, application_key)
 
     return b2_api
