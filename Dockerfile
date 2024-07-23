@@ -5,6 +5,7 @@ FROM superpat7/python-builder:3.10-debian11 AS python-base
 # cloudflare/cloudflared is based on gcr.io/distroless/base-debian11:nonroot
 FROM cloudflare/cloudflared:latest
 LABEL authors="pat@backblaze.com"
+LABEL org.opencontainers.image.source="https://github.com/backblaze-b2-samples/b2listen"
 
 # Python etc
 COPY --from=python-base /usr/local/lib/ /usr/local/lib/
