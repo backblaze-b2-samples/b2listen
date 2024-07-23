@@ -295,7 +295,7 @@ b2listen version 1.0.0
 
 ## Running B2listen Outside Docker
 
-You can also run the Python app directly from the command-line if you wish. You will need Python 3.11 or higher.
+You can also run the Python app directly from the command-line if you wish. You will need Python 3.10 or higher.
 
 First, clone this repository to your machine:
 
