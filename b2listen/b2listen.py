@@ -303,6 +303,9 @@ def run_cloudflared(command: str, loglevel: str, service_url: str, label: str, u
                     logger.info(reg_line)
                     logger.info(f'Ready to deliver events to {service_url}')
 
+    except FileNotFoundError as e:
+        exit_with_error(f'Cannot find cloudflared executable at {command}')
+
     except KeyboardInterrupt:
         # Catch KeyboardInterrupt so we don't print a stack trace on exit
         pass
