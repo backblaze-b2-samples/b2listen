@@ -18,7 +18,7 @@ Follow these instructions, as necessary:
 
 Be sure to copy the application key as soon as you create it, as you will not be able to retrieve it later!
 
-You will also need a local service to receive, and optionally act on, event notification messages. If you are experimenting with B2listen and don't have a suitable service, you can activate B2listen's [embedded HTTP server](running-the-embedded-http-server) to receive and display incoming messages.
+You will also need a local service to receive, and optionally act on, event notification messages. If you are experimenting with B2listen and don't have a suitable service, you can activate B2listen's [embedded HTTP server](#running-the-embedded-http-server) to receive and display incoming messages.
 
 ## Configuration
 
@@ -89,7 +89,7 @@ INFO:b2listen:Ready to deliver events to http://host.docker.internal:8080
 
 Most of the examples shown in this document are run from Docker.
 
-You can also run B2listen outside Docker; see the [instructions below](running-b2listen-outside-docker).
+You can also run B2listen outside Docker; see the [instructions below](#running-b2listen-outside-docker).
 
 ## Event Notification Messages
 
