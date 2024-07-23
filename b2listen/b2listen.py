@@ -3,19 +3,20 @@ import datetime
 import json
 import logging
 import os
-import traceback
-from pathlib import Path
-
-import psutil
 import re
 import subprocess
-import sys
+import traceback
 import warnings
+from importlib import metadata
+from pathlib import Path
 from typing import List, Callable, Dict
 
+import psutil
 from b2sdk.v2 import AuthInfoCache, B2Api, Bucket, InMemoryAccountInfo, NotificationRule
 from b2sdk.v2.exception import BadRequest, NonExistentBucket
 from dotenv import load_dotenv
+
+from b2listen.server import Server
 
 logging.basicConfig()
 logger = logging.getLogger('b2listen')
@@ -23,6 +24,13 @@ logger = logging.getLogger('b2listen')
 DEFAULT_PORT = 8080
 SIGNING_SECRET_LENGTH = 32
 EVENT_NOTIFICATION_RULE_PREFIX = '--autocreated-b2listen-'
+
+NAME = 'b2listen'
+
+
+def version(_args: argparse.Namespace):
+    v = metadata.version(NAME)
+    print(f'{NAME} version {v}')
 
 
 # From https://stackoverflow.com/a/73564246/33905
@@ -161,9 +169,10 @@ def validate_signing_secret(s: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
+        prog=NAME,
         description='Deliver Event Notifications for a given bucket to a local service.\n\n'
                     'For more details on one command:\n\n'
-                    f'{sys.argv[0]} <command> --help',
+                    f'{NAME} <command> --help',
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--loglevel', type=str, choices=['debug', 'info', 'warn', 'error', 'critical'],
                         required=False, default='info',
@@ -175,7 +184,7 @@ def parse_args() -> argparse.Namespace:
     common_parser.add_argument('bucket_name', type=str, metavar='bucket-name',
                                help='Name of the bucket')
 
-    subparsers = parser.add_subparsers(help='Sub-command help', dest='cmd')
+    subparsers = parser.add_subparsers(help='Sub-command help', dest='cmd', required=True)
 
     parser_listen = subparsers.add_parser(
         'listen',
@@ -183,8 +192,12 @@ def parse_args() -> argparse.Namespace:
              'You can use an existing Event Notification rule or specify the configuration '
              'of a new, temporary rule.',
         parents=[common_parser])
-    parser_listen.add_argument('--url', type=str, required=False, default=f'http://{DEFAULT_HOST}:{DEFAULT_PORT}',
-                               help=f'Local webserver URL. (default: "http://{DEFAULT_HOST}:{DEFAULT_PORT}")')
+
+    group = parser_listen.add_mutually_exclusive_group(required=True)
+    group.add_argument('--url', type=str,
+                       help=f'Local webserver URL, for example: "http://localhost:8080")')
+    group.add_argument('--run-server', action='store_true',
+                       help=f'Run the embedded HTTP server')
 
     use_existing = parser_listen.add_argument_group(description='To use an existing Event Notification rule:')
     use_existing.add_argument('--rule-name', type=str, required=False,
@@ -213,6 +226,11 @@ def parse_args() -> argparse.Namespace:
         parents=[common_parser]
     )
 
+    _parser_version = subparsers.add_parser(
+        'version',
+        help='Show the version number'
+    )
+
     args = parser.parse_args()
 
     # Remove default for event types, so we can tell if the user explicitly set it
@@ -227,27 +245,36 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def authorize_b2(application_key: str, application_key_id: str, bucket_name: str) -> B2Api:
-    info = InMemoryAccountInfo()
-    b2_api = B2Api(info, cache=AuthInfoCache(info))
-    b2_api.authorize_account("production", application_key_id, application_key)
-
+def check_bucket_allowed(b2_api: B2Api, bucket_name: str):
     allowed = b2_api.account_info.get_allowed()
     allowed_bucket_name = allowed['bucketName']
 
     logger.debug(f'Authorized for access to {allowed_bucket_name if allowed_bucket_name else "all buckets"}')
     if allowed_bucket_name and allowed_bucket_name != bucket_name:
+        application_key = b2_api.account_info.get_application_key()
         exit_with_error(f'Application key {application_key} is not authorized for {bucket_name}')
+
+
+def authorize_b2() -> B2Api:
+    application_key_id, application_key = check_and_get_env_vars(['B2_APPLICATION_KEY_ID', 'B2_APPLICATION_KEY'])
+    logger.debug(f'Application Key ID = {application_key_id}')
+    # First 4 chars of application key are the cluster - not secret, and helpful for debugging!
+    logger.debug(f'Application Key = {application_key[:4] + ("*" * 27)}')
+
+    info = InMemoryAccountInfo()
+    b2_api = B2Api(info, cache=AuthInfoCache(info))
+    b2_api.authorize_account("production", application_key_id, application_key)
+
     return b2_api
 
 
-def run_cloudflared(args: argparse.Namespace, label: str, url_handler: Callable[[str], None],
+def run_cloudflared(command: str, loglevel: str, service_url: str, label: str, url_handler: Callable[[str], None],
                     exit_handler: Callable[[], None]):
-    cmd = [args.cloudflared_command,
+    cmd = [command,
            '--no-autoupdate',
            'tunnel',
-           '--url', args.url,
-           '--loglevel', args.cloudflared_loglevel,
+           '--url', service_url,
+           '--loglevel', loglevel,
            '--label', label]
     process = None
     found_url = False
@@ -268,16 +295,16 @@ def run_cloudflared(args: argparse.Namespace, label: str, url_handler: Callable[
             if not found_url:
                 match = url_line_regex.match(line)
                 if match:
-                    url = match.group(1)
-                    logger.info(f'Tunnel URL: {url}')
-                    url_handler(url)
+                    tunnel_url = match.group(1)
+                    logger.info(f'Tunnel URL: {tunnel_url}')
+                    url_handler(tunnel_url)
                     found_url = True
             else:
                 match = reg_tunnel_regex.match(line)
                 if match:
                     reg_line = match.group(1)
                     logger.info(reg_line)
-                    logger.info(f'Ready to deliver events to {args.url}')
+                    logger.info(f'Ready to deliver events to {service_url}')
 
     except KeyboardInterrupt:
         # Catch KeyboardInterrupt so we don't print a stack trace on exit
@@ -291,7 +318,20 @@ def run_cloudflared(args: argparse.Namespace, label: str, url_handler: Callable[
             exit_handler()
 
 
-def listen(args: argparse.Namespace, b2bucket: Bucket):
+def listen(args: argparse.Namespace):
+    if args.run_server:
+        http_server = Server(interface='localhost', port=0, daemon=True)
+        http_server.start()
+        service_url = f'http://{http_server.interface}:{http_server.port}'
+    else:
+        service_url = args.url
+
+    b2_api: B2Api = authorize_b2()
+
+    check_bucket_allowed(b2_api, args.bucket_name)
+
+    b2bucket: Bucket = b2_api.get_bucket_by_name(args.bucket_name)
+
     # Label for cloudflared, used as name for temporary rule
     # 2020-03-20T14:28:23.382748 -> 2020-03-20-14-28-23-382748
     timestamp = (datetime.datetime.now().isoformat()
@@ -321,7 +361,7 @@ def listen(args: argparse.Namespace, b2bucket: Bucket):
         def exit_handler():
             delete_rule(b2bucket, label)
 
-    run_cloudflared(args, label, url_handler, exit_handler)
+    run_cloudflared(args.cloudflared_command, args.cloudflared_loglevel, service_url, label, url_handler, exit_handler)
 
 
 def parse_custom_headers(custom_headers_arg: List[str] | None) -> List[Dict[str, str]] | None:
@@ -382,7 +422,13 @@ def cleanup_rules(b2bucket: Bucket):
             b2bucket.set_notification_rules(new_rules)
 
 
-def cleanup(args: argparse.Namespace, b2bucket: Bucket):
+def cleanup(args: argparse.Namespace):
+    b2_api: B2Api = authorize_b2()
+
+    check_bucket_allowed(b2_api, args.bucket_name)
+
+    b2bucket: Bucket = b2_api.get_bucket_by_name(args.bucket_name)
+
     cleanup_rules(b2bucket)
     cleanup_processes(args.cloudflared_command)
 
@@ -390,7 +436,8 @@ def cleanup(args: argparse.Namespace, b2bucket: Bucket):
 # Map command names to functions
 commands = {
     'listen': listen,
-    'cleanup': cleanup
+    'cleanup': cleanup,
+    'version': version
 }
 
 
@@ -403,20 +450,7 @@ def main():
 
     load_dotenv()
 
-    application_key_id, application_key = check_and_get_env_vars(['B2_APPLICATION_KEY_ID', 'B2_APPLICATION_KEY'])
-    logger.debug(f'Application Key ID = {application_key_id}')
-    # First 4 chars of application key are the cluster - not secret, and helpful for debugging!
-    logger.debug(f'Application Key = {application_key[:4] + ("*" * 27)}')
-
-    b2_api = authorize_b2(application_key, application_key_id, args.bucket_name)
-
     try:
-        b2bucket: Bucket = b2_api.get_bucket_by_name(args.bucket_name)
-
-        commands[args.cmd](args, b2bucket)
+        commands[args.cmd](args)
     except NonExistentBucket as e:
         exit_with_error(f'Bucket "{args.bucket_name}" does not exist', exc_info=e)
-
-
-if __name__ == '__main__':
-    main()

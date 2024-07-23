@@ -33,8 +33,10 @@ RUN echo "python:x:1000:python" >> /etc/group \
 WORKDIR /app
 
 COPY --chown=python:python ./requirements.txt requirements.txt
+COPY --chown=python:python ./pyproject.toml pyproject.toml
 RUN python -m pip install --upgrade pip \
   && python -m pip install --no-cache-dir --upgrade -r requirements.txt \
+  && python -m pip install -e . \
   && chown python:python -R /app
 COPY --chown=python:python . .
 
@@ -54,7 +56,7 @@ ENV PYTHONFAULTHANDLER=1
 STOPSIGNAL SIGINT
 
 # Run the script, with the known location of cloudflared
-ENTRYPOINT ["python3", "b2listen.py", "--cloudflared-command", "/usr/local/bin/cloudflared"]
+ENTRYPOINT ["python3", "-m", "b2listen", "--cloudflared-command", "/usr/local/bin/cloudflared"]
 
 # Print usage if no params are passed
 CMD ["--help"]
