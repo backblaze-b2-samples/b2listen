@@ -1,3 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = 'b2listen'
+description = "B2listen allows you to forward Backblaze B2 Event Notifications to a service listening on a local URL"
+readme = "README.md"
 version = '1.0.0'
+requires-python = ">= 3.10"
+keywords = ["Backblaze", "B2" ]
+authors = [
+    {name = "Pat Patterson", email = "pat@backblaze.com"},
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Documentation = "https://readthedocs.org"
+Repository = "https://github.com/backblaze-b2-samples/b2listen.git"
+Issues = "https://github.com/backblaze-b2-samples/b2listen/issues"
+Changelog = "https://github.com/backblaze-b2-samples/b2listen/blob/master/CHANGELOG.md"
