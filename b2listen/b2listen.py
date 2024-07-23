@@ -21,7 +21,6 @@ from b2listen.server import Server
 logging.basicConfig()
 logger = logging.getLogger('b2listen')
 
-DEFAULT_PORT = 8080
 SIGNING_SECRET_LENGTH = 32
 EVENT_NOTIFICATION_RULE_PREFIX = '--autocreated-b2listen-'
 
@@ -37,9 +36,6 @@ def version(_args: argparse.Namespace):
 def in_docker():
     mountinfo = Path('/proc/self/mountinfo')
     return Path('/.dockerenv').is_file() or (mountinfo.is_file() and 'docker' in mountinfo.read_text())
-
-
-DEFAULT_HOST = 'host.docker.internal' if in_docker() else 'localhost'
 
 
 def exit_with_error(message: str, exc_info=None):
@@ -195,7 +191,7 @@ def parse_args() -> argparse.Namespace:
 
     group = parser_listen.add_mutually_exclusive_group(required=True)
     group.add_argument('--url', type=str,
-                       help=f'Local webserver URL, for example: "http://localhost:8080")')
+                       help=f'Local webserver URL, for example: "http://localhost:8080")')  # noqa
     group.add_argument('--run-server', action='store_true',
                        help=f'Run the embedded HTTP server')
 
@@ -220,13 +216,13 @@ def parse_args() -> argparse.Namespace:
                                choices=['debug', 'info', 'warn', 'error', 'fatal'], required=False, default='info',
                                help='cloudflared logging level. (default: "info")')
 
-    _parser_cleanup = subparsers.add_parser(
+    subparsers.add_parser(
         'cleanup',
         help='Remove event notification rules and kill cloudflared processes left over from previous invocations',
         parents=[common_parser]
     )
 
-    _parser_version = subparsers.add_parser(
+    subparsers.add_parser(
         'version',
         help='Show the version number'
     )
@@ -241,7 +237,7 @@ def parse_args() -> argparse.Namespace:
     if (args.cmd == 'listen'
             and args.rule_name
             and (user_set_args.event_types or args.prefix or args.custom_headers or args.signing_secret)):
-        exit_with_error(f'You cannot specify an existing rule name and configuration for a temporary rule')
+        exit_with_error('You cannot specify an existing rule name and configuration for a temporary rule')
     return args
 
 
@@ -322,7 +318,7 @@ def listen(args: argparse.Namespace):
     if args.run_server:
         http_server = Server(interface='localhost', port=0, daemon=True)
         http_server.start()
-        service_url = f'http://{http_server.interface}:{http_server.port}'
+        service_url = f'http://{http_server.interface}:{http_server.port}'  # noqa
     else:
         service_url = args.url
 
