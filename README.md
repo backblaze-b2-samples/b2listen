@@ -45,7 +45,7 @@ The most convenient way to use B2listen is via Docker, but you can also run the 
 In either case, you can run B2listen with the `--help` argument to show top level usage information, and specify a command for more detail. For example, in Docker:
 
 ```console
-% docker run superpat7/b2listen --help                                  
+% docker run ghcr.io/backblaze-b2-samples/b2listen:latest --help                                  
 usage: b2listen.py [-h] [--loglevel {debug,info,warn,error,critical}]
                    [--cloudflared-command CLOUDFLARED_COMMAND]
                    {listen,cleanup,version} ...
@@ -69,7 +69,7 @@ usage: b2listen listen [-h] (--url URL | --run-server) [--rule-name RULE_NAME]
 
 ## Running B2listen in Docker
 
-The Docker image, `superpat7/b2listen`, bundles the `cloudflare` executable with the B2listen Python application and the Python runtime. The image supports the `linux/amd64` and `linux/arm64` platforms, so it will run on Docker hosts with either Intel/AMD or Apple Silicon CPUs.
+The Docker image, `ghcr.io/backblaze-b2-samples/b2listen`, bundles the `cloudflare` executable with the B2listen Python application and the Python runtime. The image supports the `linux/amd64` and `linux/arm64` platforms, so it will run on Docker hosts with either Intel/AMD or Apple Silicon CPUs.
 
 You can pass your application key and its ID to the Docker run command using the `--env-file` argument and your `.env` file, as shown below, or by setting a `--env` argument for each value.
 
@@ -78,16 +78,40 @@ To create a new, temporary, event notification rule and proxy event notification
 > Note: `host.docker.internal` is a special hostname that resolves to the Docker host. If you use a hostname such as `localhost` or `127.0.0.1` when B2listen is running in Docker, it will resolve to the Docker container's own network interface.
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen my-bucket --url http://host.docker.internal:8080
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+    --url http://host.docker.internal:8080
 INFO:b2listen:Tunnel URL: https://alfred-dakota-vbulletin-comfort.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-22-18-03-448423--"
 INFO:b2listen:Registered tunnel connection connIndex=0 connection=b7ebd606-8da5-4273-af3d-472ec741887c event=0 ip=198.41.200.13 location=sjc08 protocol=quic
 INFO:b2listen:Ready to deliver events to http://host.docker.internal:8080
 ```
 
-> At present, the B2listen Docker image is located in the [`superpat7/b2listen`](https://hub.docker.com/r/superpat7/b2listen) repository. We plan to move it to a more 'official' location in the near future.
-
 Most of the examples shown in this document are run from Docker.
+
+> You can create a short image tag as an alias for `ghcr.io/backblaze-b2-samples/b2listen`. For example:
+> ```console
+> % docker tag ghcr.io/backblaze-b2-samples/b2listen:latest b2listen
+> ```
+> Now you can use the shorter tag when running B2listen, for example:
+> ```console
+> % docker run --env-file .env b2listen listen --run-server my-bucket
+> ```
+> Note, though, that the tag refers to a specific image ID. If you pull a new version of B2listen, you will need to remove and recreate the tag if you want it to refer to the new version:
+> ```console
+> % docker pull ghcr.io/backblaze-b2-samples/b2listen:latest
+> latest: Pulling from backblaze-b2-samples/b2listen
+> 1561eceef0e7: Download complete
+> 96ab28538562: Download complete
+> 0b24de0f619a: Download complete
+> ...
+> Status: Downloaded newer image for ghcr.io/backblaze-b2-samples/b2listen:latest
+> ghcr.io/backblaze-b2-samples/b2listen:latest
+> % docker image rm b2listen                              
+> Untagged: b2listen:latest
+> % docker tag ghcr.io/backblaze-b2-samples/b2listen:latest b2listen
+> ```
+> 
+> For clarity, this README uses the full tag.
 
 You can also run B2listen outside Docker; see the [instructions below](#running-b2listen-outside-docker).
 
@@ -101,7 +125,8 @@ When you upload a file to (or delete, or hide a file in) your Backblaze B2 Bucke
 You can run B2listen's embedded HTTP server by passing the `--run-server` argument to the `listen` command. B2listen starts a simple HTTP server on an available port and uses its interface and port to build the local service URL:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen --run-server my-bucket
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen \
+    --run-server my-bucket
 INFO:b2listen.server:Starting HTTP server on 127.0.0.1:50427
 INFO:b2listen:Tunnel URL: https://workforce-help-experiences-peak.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-22-07-32-503587--"
@@ -195,7 +220,8 @@ Notification rules for b2://my-bucket/ :
 You can customize the temporary event notification rule's configuration via B2listen's command-line arguments. For example, to configure a temporary rule to match all 'object created' events with an object name prefix of `images/raw`, set the custom header `X-Source: B2` on event notification messages and sign messages with the signing secret `01234567890123456789012345678901`, you would use the following command-line:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+    --url host.docker.internal:8000 \
     --event-types 'b2:ObjectCreated:*' --prefix 'images/raw' --custom-header 'X-Source: B2' \
     --signing-secret 01234567890123456789012345678901
 INFO:root:Tunnel URL: https://realize-pj-reasons-pasta.trycloudflare.com
@@ -207,8 +233,9 @@ Note that the temporary rule's configuration cannot overlap with an existing rul
 If you ran the above command in the presence of an existing rule with event type `b2:ObjectCreated:*` and prefix `images`, you would receive an error message:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
-    --event-types 'b2:ObjectCreated:*' --prefix 'images/raw' --custom-header 'X-Source: B2' \
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+    --url host.docker.internal:8000 --event-types 'b2:ObjectCreated:*' \
+    --prefix 'images/raw' --custom-header 'X-Source: B2' \
     --signing-secret 01234567890123456789012345678901
 INFO:b2listen:Tunnel URL: https://knight-boxing-discipline-commitment.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-15-38-57-094644--"
@@ -230,8 +257,8 @@ INFO:b2listen:Deleting rule with name "--autocreated-b2listen-2024-07-23-05-59-1
 As an alternative to creating a temporary event notification rule, you can specify the name of an existing rule. On startup, B2listen will replace the URL in the existing rule with the `trycloudflare.com` URL.
 
 ```console
-% docker run --env-file superpat7/b2listen listen my-bucket --url host.docker.internal:8000 \
-    --rule-name new-image-created
+% docker run --env-file ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+    --url host.docker.internal:8000 --rule-name new-image-created
 INFO:root:Tunnel URL: https://larger-interracial-william-validity.trycloudflare.com
 INFO:b2listen:Modified rule with name "new-image-created"
 INFO:b2listen:Old URL was https://webhook.example.com/events; new URL is https://newton-motivated-fresh-op.trycloudflare.com
@@ -251,7 +278,8 @@ INFO:b2listen:Old URL was https://newton-motivated-fresh-op.trycloudflare.com; n
 In some circumstances, B2listen may not delete the temporary rule when exiting. If this happens, the next time you run B2listen, you will see an error message:
 
 ```console
-% docker run --env-file .env superpat7/b2listen listen my-bucket --url host.docker.internal:8000
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+    --url host.docker.internal:8000
 INFO:b2listen:Tunnel URL: https://pulse-equity-lyric-premiere.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-16-10-39-480080--"
 CRITICAL:b2listen:Error creating event notification rule - an overlapping rule already exists.
@@ -271,7 +299,7 @@ In these circumstances, you can run B2listen with the `cleanup` command to delet
 In Docker:
 
 ```console
-% docker run --env-file .env superpat7/b2listen cleanup my-bucket      
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen cleanup my-bucket      
 INFO:root:Deleting rule "--autocreated-b2listen-2024-07-22-16-09-39-909265--"
 INFO:root:Could not find any processes with --autocreated-b2listen- in the command line
 ```
@@ -289,7 +317,7 @@ INFO:b2listen:Killing process 3313 with command line "cloudflared --no-autoupdat
 Use the `version` command to show the version number:
 
 ```console
-% docker run superpat7/b2listen version
+% docker run ghcr.io/backblaze-b2-samples/b2listen version
 b2listen version 1.0.0
 ```
 
@@ -333,7 +361,7 @@ You also need to install `b2listen` in editable mode:
 
 Create a `.env` file as described in the [Configuration](#configuration) section above. The Python app will automatically load the `.env` file.
 
-You can now run any of the above commands using `python -m b2listen` instead of `docker run --env-file .env superpat7/b2listen`. For example:
+You can now run any of the above commands using `python -m b2listen` instead of `docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen`. For example:
 
 ```console
 % python -m b2listen listen my-bucket --url http://localhost:8080
@@ -346,7 +374,8 @@ INFO:b2listen:Ready to deliver events to http://localhost:8080
 If `cloudflared` is not on the path, you can specify its location with the `--cloudflared-command` argument:
 
 ```console
-% python -m b2listen --cloudflared-command /path/to/my/cloudflared listen my-bucket --url http://localhost:8080
+% python -m b2listen --cloudflared-command /path/to/my/cloudflared listen my-bucket \
+    --url http://localhost:8080
 ...
 ```
 
@@ -355,7 +384,8 @@ If `cloudflared` is not on the path, you can specify its location with the `--cl
 You can use the `--loglevel` argument to set B2listen's logging level to one of `debug`, `info`, `warn`, `error`, or `critical`. Setting the logging level to `debug` shows much more detail, including the JSON representation of the temporary rule and all of the output from `cloudflared`:
 
 ```console
-% docker run --env-file .env superpat7/b2listen --loglevel debug listen my-bucket --url host.docker.internal:8080
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen --loglevel debug \
+    listen my-bucket --url host.docker.internal:8080
 DEBUG:b2listen:Application Key ID = 00415f935cf4dcb0000000473
 DEBUG:b2listen:Application Key = K004***************************
 DEBUG:b2listen:Authorized for access to my-bucket
@@ -401,7 +431,8 @@ INFO:b2listen:Ready to deliver events to http://host.docker.internal:8080
 Setting logging level to `debug` will also show a detailed stack trace for all errors. For example:
 
 ```console
-% docker run --env-file .env superpat7/b2listen --loglevel debug listen --url host.docker.internal:8080 bad-bucket
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen --loglevel debug \
+    listen --url host.docker.internal:8080 bad-bucket
 DEBUG:b2listen:Application Key ID = 00415f935cf4dcb0000000472
 DEBUG:b2listen:Application Key = K004***************************
 DEBUG:b2listen:Authorized for access to all buckets
