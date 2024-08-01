@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Callable, Dict
 
 import psutil
-from b2sdk.v2 import AuthInfoCache, B2Api, Bucket, InMemoryAccountInfo, NotificationRule
+from b2sdk.v2 import AuthInfoCache, B2Api, B2HttpApiConfig, Bucket, InMemoryAccountInfo, NotificationRule
 from b2sdk.v2.exception import BadRequest, NonExistentBucket
 from dotenv import load_dotenv
 
@@ -27,7 +27,7 @@ EVENT_NOTIFICATION_RULE_PREFIX = '--autocreated-b2listen-'
 NAME = 'b2listen'
 
 
-def version(_args: argparse.Namespace):
+def version(_args: argparse.Namespace | None = None):
     v = metadata.version(NAME)
     print(f'{NAME} version {v}')
 
@@ -258,7 +258,8 @@ def authorize_b2() -> B2Api:
     logger.debug(f'Application Key = {application_key[:4] + ("*" * 27)}')
 
     info = InMemoryAccountInfo()
-    b2_api = B2Api(info, cache=AuthInfoCache(info))
+    api_config = B2HttpApiConfig(user_agent_append=f'{NAME}/{version()}')
+    b2_api = B2Api(info, cache=AuthInfoCache(info), api_config=api_config)
     b2_api.authorize_account("production", application_key_id, application_key)
 
     return b2_api
@@ -301,6 +302,9 @@ def run_cloudflared(command: str, loglevel: str, service_url: str, label: str, u
                     reg_line = match.group(1)
                     logger.info(reg_line)
                     logger.info(f'Ready to deliver events to {service_url}')
+
+    except FileNotFoundError as e:
+        exit_with_error(f'Cannot find cloudflared executable at {command}')
 
     except KeyboardInterrupt:
         # Catch KeyboardInterrupt so we don't print a stack trace on exit
@@ -350,12 +354,18 @@ def listen(args: argparse.Namespace):
             nonlocal old_url
             modify_rule(b2bucket, old_url, args.rule_name)
     else:
+        created_rule: bool = False
+
         # No - create a temporary rule using the label as its name
         def url_handler(url):
+            nonlocal created_rule
             create_rule(b2bucket, url, label, args)
+            created_rule = True
 
         def exit_handler():
-            delete_rule(b2bucket, label)
+            nonlocal created_rule
+            if created_rule:
+                delete_rule(b2bucket, label)
 
     run_cloudflared(args.cloudflared_command, args.cloudflared_loglevel, service_url, label, url_handler, exit_handler)
 
