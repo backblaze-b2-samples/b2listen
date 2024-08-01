@@ -2,7 +2,7 @@
 name = 'b2listen'
 description = "B2listen allows you to forward Backblaze B2 Event Notifications to a service listening on a local URL"
 readme = "README.md"
-version = '1.0.0'
+version = '1.0.1'
 requires-python = ">= 3.10"
 keywords = ["Backblaze", "B2" ]
 authors = [
