@@ -193,7 +193,13 @@ def parse_args() -> argparse.Namespace:
     group.add_argument('--url', type=str,
                        help=f'Local webserver URL, for example: "http://localhost:8080")')  # noqa
     group.add_argument('--run-server', action='store_true',
-                       help=f'Run the embedded HTTP server')
+                       help=f'Run the embedded webserver')
+
+    run_server = parser_listen.add_argument_group(description='To simulate rate limiting in the embedded webserver:')
+    run_server.add_argument('--rate-limit-frequency', type=int, required=False,
+                              help='Respond with "429 Too Many Requests" for this percentage of notifications.')
+    run_server.add_argument('--retry-after', type=int, required=False,
+                            help='Value for the "Retry-After" header in a rate limit response.')
 
     use_existing = parser_listen.add_argument_group(description='To use an existing Event Notification rule:')
     use_existing.add_argument('--rule-name', type=str, required=False,
@@ -320,7 +326,8 @@ def run_cloudflared(command: str, loglevel: str, service_url: str, label: str, u
 
 def listen(args: argparse.Namespace):
     if args.run_server:
-        http_server = Server(interface='localhost', port=0, daemon=True)
+        http_server = Server(interface='localhost', port=0, daemon=True,
+                             rate_limit_frequency=args.rate_limit_frequency, retry_after=args.retry_after)
         http_server.start()
         service_url = f'http://{http_server.interface}:{http_server.port}'  # noqa
     else:
