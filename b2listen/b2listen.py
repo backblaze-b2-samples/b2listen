@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+
 import subprocess
 import traceback
 import warnings
@@ -17,6 +18,7 @@ from b2sdk.v2.exception import BadRequest, NonExistentBucket
 from dotenv import load_dotenv
 
 from b2listen.server import Server
+from b2listen.subscription import Subscription
 
 logging.basicConfig()
 logger = logging.getLogger('b2listen')
@@ -75,7 +77,7 @@ def check_and_get_env_vars(env_vars: List[str]) -> List[str]:
     return values
 
 
-def create_rule(b2bucket: Bucket, url: str, name: str, args: argparse.Namespace):
+def create_rule(b2bucket: Bucket, url: str, name: str, args: argparse.Namespace, signing_secret: str):
     custom_headers = parse_custom_headers(args.custom_headers)
 
     new_rule: NotificationRule = {
@@ -87,7 +89,7 @@ def create_rule(b2bucket: Bucket, url: str, name: str, args: argparse.Namespace)
             'targetType': 'webhook',
             'url': url,
             'customHeaders': custom_headers,
-            'hmacSha256SigningSecret': args.signing_secret
+            'hmacSha256SigningSecret': signing_secret
         }
     }
 
@@ -197,13 +199,19 @@ def parse_args() -> argparse.Namespace:
 
     run_server = parser_listen.add_argument_group(description='To simulate rate limiting in the embedded webserver:')
     run_server.add_argument('--rate-limit-frequency', type=int, required=False,
-                              help='Respond with "429 Too Many Requests" for this percentage of notifications.')
+                            help='Respond with "429 Too Many Requests" for this percentage of notifications.')
     run_server.add_argument('--retry-after', type=int, required=False,
                             help='Value for the "Retry-After" header in a rate limit response.')
 
     use_existing = parser_listen.add_argument_group(description='To use an existing Event Notification rule:')
     use_existing.add_argument('--rule-name', type=str, required=False,
                               help='Name of an existing event notification rule.')
+
+    use_broker = parser_listen.add_argument_group(description='To use an event broker:')
+    use_broker.add_argument('--event-broker-url', type=str, required=False,
+                            help='Event broker URL, for example: https://event-broker.acme.workers.dev.')
+    use_broker.add_argument('--poll-interval', type=float, required=False, default=30,
+                            help='Poll interval for checking subscription is live')
 
     create_temporary = parser_listen.add_argument_group(description='To create a temporary Event Notification rule:')
     create_temporary.add_argument('--event-types', type=str, nargs='*',
@@ -214,9 +222,6 @@ def parse_args() -> argparse.Namespace:
     create_temporary.add_argument('--custom-headers', type=str, required=False, nargs='*',
                                   help='One or more custom headers in the form '
                                        'X-My-First-Header:red X-My-Second-Header:blue')
-    create_temporary.add_argument('--signing-secret', type=validate_signing_secret, required=False,
-                                  help='A 32-character secret that is used to sign the webhook invocation payload '
-                                       'using the HMAC SHA-256 algorithm')
 
     parser_listen.add_argument('--cloudflared-loglevel', type=str,
                                choices=['debug', 'info', 'warn', 'error', 'fatal'], required=False, default='info',
@@ -242,7 +247,7 @@ def parse_args() -> argparse.Namespace:
 
     if (args.cmd == 'listen'
             and args.rule_name
-            and (user_set_args.event_types or args.prefix or args.custom_headers or args.signing_secret)):
+            and (user_set_args.event_types or args.prefix or args.custom_headers)):
         exit_with_error('You cannot specify an existing rule name and configuration for a temporary rule')
     return args
 
@@ -309,7 +314,7 @@ def run_cloudflared(command: str, loglevel: str, service_url: str, label: str, u
                     logger.info(reg_line)
                     logger.info(f'Ready to deliver events to {service_url}')
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         exit_with_error(f'Cannot find cloudflared executable at {command}')
 
     except KeyboardInterrupt:
@@ -347,32 +352,54 @@ def listen(args: argparse.Namespace):
                  .replace('.', '-'))
     label = f'{EVENT_NOTIFICATION_RULE_PREFIX}{timestamp}--'
 
-    # Did the user specify a rule name?
-    if args.rule_name:
-        # Yes - modify an existing rule
-        # We need to remember the old URL to restore it on exit
-        old_url: str | None = None
+    signing_secret: str = os.environ.get('SIGNING_SECRET')
+
+    if args.event_broker_url:
+        subscription: Subscription | None = None
+        if not signing_secret:
+            exit_with_error('You must set the SIGNING_SECRET environment variable')
+        validate_signing_secret(signing_secret)
 
         def url_handler(url):
-            nonlocal old_url
-            old_url = modify_rule(b2bucket, url, args.rule_name)
+            nonlocal subscription
+            logger.info(f'Subscribing for updates from {args.event_broker_url}')
+            subscription = Subscription(args.event_broker_url, url, args.bucket_name, args.rule_name, signing_secret,
+                                        args.poll_interval)
 
         def exit_handler():
-            nonlocal old_url
-            modify_rule(b2bucket, old_url, args.rule_name)
+            nonlocal subscription
+            logger.info(f'Unsubscribing from updates from {args.event_broker_url}')
+            subscription.stop()
+
     else:
-        created_rule: bool = False
+        # Did the user specify a rule name?
+        if args.rule_name:
+            # Yes - modify an existing rule
+            # We need to remember the old URL to restore it on exit
+            old_url: str | None = None
 
-        # No - create a temporary rule using the label as its name
-        def url_handler(url):
-            nonlocal created_rule
-            create_rule(b2bucket, url, label, args)
-            created_rule = True
+            def url_handler(url):
+                nonlocal old_url, b2bucket
+                old_url = modify_rule(b2bucket, url, args.rule_name)
 
-        def exit_handler():
-            nonlocal created_rule
-            if created_rule:
-                delete_rule(b2bucket, label)
+            def exit_handler():
+                nonlocal old_url, b2bucket
+                modify_rule(b2bucket, old_url, args.rule_name)
+        else:
+            created_rule: bool = False
+
+            # No - create a temporary rule using the label as its name
+            def url_handler(url):
+                nonlocal created_rule
+                if signing_secret:
+                    validate_signing_secret(signing_secret)
+                create_rule(b2bucket, url, label, args, signing_secret)
+                created_rule = True
+
+            def exit_handler():
+                nonlocal created_rule
+                if created_rule:
+                    delete_rule(b2bucket, label)
 
     run_cloudflared(args.cloudflared_command, args.cloudflared_loglevel, service_url, label, url_handler, exit_handler)
 
@@ -460,6 +487,7 @@ def main():
     args = parse_args()
 
     logger.setLevel(args.loglevel.upper())
+    logging.getLogger('subscription').setLevel(args.loglevel.upper())
 
     load_dotenv()
 

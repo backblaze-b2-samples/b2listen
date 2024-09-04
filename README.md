@@ -2,7 +2,7 @@
 
 The Backblaze B2 Listener, "B2listen" for short, allows you to forward Backblaze B2 Event Notifications to a service listening on a local URL. B2listen uses Cloudflare's free [Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) feature, running an instance of [cloudflared](https://github.com/cloudflare/cloudflared) to generate a random subdomain on `trycloudflare.com` and proxy traffic from that URL to the local endpoint. B2listen can modify an existing Event Notification rule to use the `trycloudflre.com` URL or create a new, temporary, rule to do so.
 
-Note: the Event Notifications feature is currently in private preview. For information about enabling this feature, see [Automate Your Data Workflows With Backblaze B2 Event Notifications](https://www.backblaze.com/blog/announcing-event-notifications/).
+Note: the Event Notifications feature is currently in public preview. For information about enabling this feature, see [Automate Your Data Workflows With Backblaze B2 Event Notifications](https://www.backblaze.com/blog/announcing-event-notifications/).
 
 ## Prerequisites
 
@@ -20,11 +20,13 @@ Be sure to copy the application key as soon as you create it, as you will not be
 
 You will also need a local service to receive, and optionally act on, event notification messages. If you are experimenting with B2listen and don't have a suitable service, you can activate B2listen's [embedded HTTP server](#running-the-embedded-http-server) to receive and display incoming messages.
 
+Optionally, if you wish to deliver events to multiple local services, you can use B2listen with the [Backblaze B2 Event Broker](https://github.com/backblaze-b2-samples/b2-event-broker); see [below](#using-b2listen-with-the-backblaze-b2-event-broker) for details.
+
 ## Configuration
 
 You must set environment variables containing your Backblaze B2 application key and its ID: `B2_APPLICATION_KEY` and `B2_APPLICATION_KEY_ID` respectively. You can set these in the environment, in a `.env` file, or on the Docker command-line.
 
-This repo includes a template file, `.env.template`. Copy it to `.env`, then edit it as follows:
+This repo includes a template file, `.env.template`. You can copy it to `.env`, then edit it as follows:
 ```dotenv
 B2_APPLICATION_KEY_ID=Your-Application-Key-ID
 B2_APPLICATION_KEY=Your-Application-Key
@@ -35,6 +37,8 @@ When you're done, .env should look like this:
 B2_APPLICATION_KEY_ID=004qlekmvpwemrt000000009e
 B2_APPLICATION_KEY=K004JEKEUTGLKEJFKLRJHTKLVCNWURM
 ```
+
+If you are using B2listen with the Backblaze B2 Event Broker, you will also need to configure an environment variable, `SIGNING_SECRET`, containing the shared signing secret. This must be the same as the signing secret in your Event Notifications rule(s).
 
 Note: do not use quotes in the `.env` file. Docker does not recognize quoted variable values, and will include the quotes in the values of the variables.
 
@@ -221,7 +225,7 @@ You can customize the temporary event notification rule's configuration via B2li
 
 ```console
 % docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
-    --url host.docker.internal:8000 \
+    --url http://host.docker.internal:8000 \
     --event-types 'b2:ObjectCreated:*' --prefix 'images/raw' --custom-header 'X-Source: B2' \
     --signing-secret 01234567890123456789012345678901
 INFO:root:Tunnel URL: https://realize-pj-reasons-pasta.trycloudflare.com
@@ -234,17 +238,38 @@ If you ran the above command in the presence of an existing rule with event type
 
 ```console
 % docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
-    --url host.docker.internal:8000 --event-types 'b2:ObjectCreated:*' \
-    --prefix 'images/raw' --custom-header 'X-Source: B2' \
-    --signing-secret 01234567890123456789012345678901
+    --url http://host.docker.internal:8000 --event-types 'b2:ObjectCreated:*' \
+    --prefix 'images/raw' --custom-header 'X-Source: B2'
 INFO:b2listen:Tunnel URL: https://knight-boxing-discipline-commitment.trycloudflare.com
 INFO:b2listen:Creating rule with name "--autocreated-b2listen-2024-07-22-15-38-57-094644--"
 CRITICAL:b2listen:Error setting event notification rule: More than one event notification rule has overlapping prefixes (images),(images/raw) for the same event type: b2:ObjectCreated:*
 ```
 
+## Using B2listen with the Backblaze B2 Event Broker
+
+You can use B2listen with the [Backblaze B2 Event Broker](https://github.com/backblaze-b2-samples/b2-event-broker) to forward Backblaze B2 Event Notifications to multiple services listening on local URLs. Use the `--event-broker-url` argument to specify the event broker URL and, optionally, `--poll-interval` to specify the interval with which B2listen will poll the event broker to check that its subscription is active.
+
+```console
+% docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
+--rule-name myEventRule --event-broker-url https://event-broker.acme.workers.dev \
+--url http://host.docker.internal:8000 --poll-interval 10
+```
+
+The event broker receives event notification messages from Backblaze B2 and forwards them to subscribing instances of B2listen. B2listen subscribes for messages when it starts up and unsubscribes when it shuts down. If the event broker cannot successfully forward an incoming message to a subscriber, it will retry after 1, 2, 4, and 8 seconds, then, if the message could not be forwarded, terminate that subscription.
+
+To handle situations when B2listen is temporarily offline, for example, if its VM is paused, B2 listen will periodically poll the event broker to check that its subscription is active. If B2listen determines that its subscription had been terminated, then it checks that the local service is still accessible, and, if so, creates a new subscription. If the local service is not accessible, then B2 listen displays a suitable message and tries again later:
+
+```
+INFO:subscription:Subscribed to metadaddy-tester/allEvents/04545928-b5ae-4189-b3b8-b299f3a8714d
+...
+WARNING:subscription:Subscription is no longer active, and client is not responding. Will try again in 30 seconds
+INFO:subscription:Subscription is no longer active, but client is awake. Resubscribing.
+INFO:subscription:Subscribed to metadaddy-tester/allEvents/9a26a8c6-807a-40c2-b6d4-8463895d9849
+```
+
 ## Terminating B2listen
 
-Press Ctrl-C to terminate B2listen. When B2listen exits, it deletes the temporary rule that it created:
+Press Ctrl-C to terminate B2listen. When B2listen exits, it deletes the temporary rule, if it created one:
 
 ```console
 ...
