@@ -251,7 +251,7 @@ You can use B2listen with the [Backblaze B2 Event Broker](https://github.com/bac
 
 ```console
 % docker run --env-file .env ghcr.io/backblaze-b2-samples/b2listen listen my-bucket \
---rule-name myEventRule --event-broker-url https://event-broker.acme.workers.dev \
+--rule-name my-event-rule --event-broker-url https://event-broker.acme.workers.dev \
 --url http://host.docker.internal:8000 --poll-interval 10
 ```
 
