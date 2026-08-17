@@ -367,7 +367,6 @@ def listen(args: argparse.Namespace):
                                         args.poll_interval)
 
         def exit_handler():
-            nonlocal subscription
             logger.info(f'Unsubscribing from updates from {args.event_broker_url}')
             subscription.stop()
 
@@ -379,11 +378,10 @@ def listen(args: argparse.Namespace):
             old_url: str | None = None
 
             def url_handler(url):
-                nonlocal old_url, b2bucket
+                nonlocal old_url
                 old_url = modify_rule(b2bucket, url, args.rule_name)
 
             def exit_handler():
-                nonlocal old_url, b2bucket
                 modify_rule(b2bucket, old_url, args.rule_name)
         else:
             created_rule: bool = False
@@ -397,7 +395,6 @@ def listen(args: argparse.Namespace):
                 created_rule = True
 
             def exit_handler():
-                nonlocal created_rule
                 if created_rule:
                     delete_rule(b2bucket, label)
 
@@ -482,8 +479,6 @@ commands = {
 
 
 def main():
-    global commands
-
     args = parse_args()
 
     logger.setLevel(args.loglevel.upper())
