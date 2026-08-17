@@ -367,8 +367,9 @@ def listen(args: argparse.Namespace):
                                         args.poll_interval)
 
         def exit_handler():
-            logger.info(f'Unsubscribing from updates from {args.event_broker_url}')
-            subscription.stop()
+            if subscription:
+                logger.info(f'Unsubscribing from updates from {args.event_broker_url}')
+                subscription.stop()
 
     else:
         # Did the user specify a rule name?
@@ -382,7 +383,8 @@ def listen(args: argparse.Namespace):
                 old_url = modify_rule(b2bucket, url, args.rule_name)
 
             def exit_handler():
-                modify_rule(b2bucket, old_url, args.rule_name)
+                if old_url:
+                    modify_rule(b2bucket, old_url, args.rule_name)
         else:
             created_rule: bool = False
 
