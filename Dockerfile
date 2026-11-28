@@ -2,8 +2,31 @@
 # This is similar to al3xos/python-builder:3.10-debian11 but multiplatform (arm64+amd64)
 FROM superpat7/python-builder:3.12-debian11 AS python-base
 
-# cloudflare/cloudflared is based on gcr.io/distroless/base-debian11:nonroot
-FROM cloudflare/cloudflared:latest
+# cloudflare/cloudflared is based on gcr.io/distroless/base-debian13:nonroot (debian11 before 2025)
+FROM cloudflare/cloudflared:latest AS runtime-base
+
+# Stage the debian11 shared libraries that Python needs and the runtime image lacks, so newer
+# copies already in the runtime (e.g. libz) are kept. /usr/lib/<triplet> holds them whether or
+# not the runtime's /lib is merged into /usr/lib.
+FROM python-base AS libs
+ARG TARGETARCH
+USER root
+COPY --from=runtime-base /usr/lib/ /runtime/usr/lib/
+RUN case "$TARGETARCH" in \
+      amd64) triplet=x86_64-linux-gnu ;; \
+      arm64) triplet=aarch64-linux-gnu ;; \
+      *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+  && mkdir -p /staging/usr/lib/$triplet \
+  && for lib in libbz2.so.1.0 libcrypto.so.1.1 libexpat.so.1 libffi.so.7 liblzma.so.5 \
+                libsqlite3.so.0 libssl.so.1.1 libuuid.so.1 libz.so.1; do \
+       [ -e /runtime/usr/lib/$triplet/$lib ] && continue; \
+       src=$(readlink -e /lib/$triplet/$lib || readlink -e /usr/lib/$triplet/$lib) \
+         || { echo "Missing $lib" >&2; exit 1; }; \
+       cp "$src" /staging/usr/lib/$triplet/$lib || exit 1; \
+     done
+
+FROM runtime-base
 
 LABEL authors="pat@backblaze.com"
 LABEL org.opencontainers.image.source="https://github.com/backblaze-b2-samples/b2listen"
@@ -18,21 +41,10 @@ COPY --from=python-base /etc/ld.so.cache /etc/
 # Minimal tools for build - we'll delete them later
 COPY --from=python-base /bin/echo /bin/ln /bin/rm /bin/sh /bin/chown /bin/
 
-# Need to be root to create soft links in /lib and /usr/lib
+COPY --from=libs /staging/ /
+
+# Need to be root to install packages and create the python user
 USER root
-
-# Shenanigans to make multi-platform builds work!
-# Libraries are located in /lib/amd64-linux-gnu or /lib/aarch64-linux-gnu depending on the platform
-# The problem is, there is no easy way to refer to aarch64 - ${TARGETARCH} is set to arm64 even if
-# you specify linux/aarch64 as the target platform
-RUN ln -s /lib/*64-linux-gnu /lib/CHIPSET_ARCH \
-  && ln -s /usr/lib/*64-linux-gnu /usr/lib/CHIPSET_ARCH
-
-# Copy required libraries
-COPY --from=python-base /lib/*64-linux-gnu/libexpat* /lib/CHIPSET_ARCH/
-COPY --from=python-base /lib/*64-linux-gnu/libz.so.1 /lib/CHIPSET_ARCH/
-COPY --from=python-base /usr/lib/*64-linux-gnu/libffi* /usr/lib/CHIPSET_ARCH/
-COPY --from=python-base /usr/lib/*64-linux-gnu/libsqlite3.so.0 /usr/lib/CHIPSET_ARCH/
 
 WORKDIR /app
 
@@ -40,8 +52,7 @@ COPY --chown=python:python ./requirements.txt requirements.txt
 COPY --chown=python:python ./pyproject.toml pyproject.toml
 
 # Do all of this in one RUN to minimize number of layers and speed up build time
-RUN rm /lib/CHIPSET_ARCH /usr/lib/CHIPSET_ARCH \
-  && echo "python:x:1000:python" >> /etc/group \
+RUN echo "python:x:1000:python" >> /etc/group \
   && echo "python:x:1001:" >> /etc/group \
   && echo "python:x:1000:1001::/home/python:" >> /etc/passwd \
   && python --version \
